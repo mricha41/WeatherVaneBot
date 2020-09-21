@@ -1,0 +1,3 @@
+#ignore top-level user config file
+*.ini
+*.pyc
