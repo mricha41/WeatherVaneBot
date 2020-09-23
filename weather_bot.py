@@ -13,6 +13,7 @@ import string
 import datetime
 from timezonefinder import TimezoneFinder
 from pytz import timezone
+import urllib.parse
 
 import requests
 import json
@@ -80,26 +81,28 @@ states = {
 class Bot(dokkaebi.Dokkaebi):
 	@cherrypy.expose
 	def dash(self, **params):
-		"""
-		{
-			'place': 'Kennesaw, GA - US:', 
-			'latitude': 34.02, 'longitude': -84.62, 
-			'local_timezone': <DstTzInfo 'America/New_York' LMT-1 day, 19:04:00 STD>, 
-			'temp': 65.41, 'feel': 59.63, 'min_temp': 63, 'max_temp': 66.99, 
-			'pressure': 1029, 'humidity': 52, 
-			'main': 'Clear', 'desc': 'clear sky', 
-			'icon': '01d', 'country': 'US', 
-			'sunrise': datetime.datetime(2020, 9, 21, 7, 26, 12, tzinfo=<DstTzInfo 'America/New_York' EDT-1 day, 20:00:00 DST>), 
-			'sunset': datetime.datetime(2020, 9, 21, 19, 36, 35, tzinfo=<DstTzInfo 'America/New_York' EDT-1 day, 20:00:00 DST>), 
-			'name': 'Kennesaw'
-		}
-		"""
+		dash_data = {}
+		if "city" in params:
+			if "country_code" in params:
+				if "state" in params:
+					self.cityDash({"city": params["city"], "state": params["state"], "country_code": params["country_code"]}, dash_data)
+				else:
+					self.cityDash({"city": params["city"], "country_code": params["country_code"]}, dash_data)
+			else:
+				self.cityDash({"city": params["city"]}, dash_data)
+		else:
+			return "Bad parameters - need a city name for a forecast dashboard at a minimum."
+		#return "{}".format(dash_data)
+
+		dy = []
+		for i in range(0,40):
+			dy.append(dash_data["forecasts"][i]["temp"])
+
 		fig = plotly.graph_objects.Figure(
 		    data=[plotly.graph_objects.Scatter(
-		    	x=["Low", "Current", "High"],
-		    	y=[params["min_temp"], params["temp"], params["max_temp"]]
+		    	y=dy
 		    )],
-		    layout_title_text=params["place"] + "\n{}".format(params.get("timestamp")),
+		    layout_title_text=params["city"],
 		)
 
 		fig.update_layout(yaxis=dict(range=[-30, 130]))
@@ -122,6 +125,43 @@ class Bot(dokkaebi.Dokkaebi):
 			self.weatherByPostalCode(user_parameters, data)
 		elif type == WeatherType.CITY_DASH:
 			self.cityDash(user_parameters, data)
+
+	def prepareCityForecast(self, res, data):
+		if res != {}:
+			tf = TimezoneFinder()
+			
+			if res.get("list") and res["list"] != None:
+				print("there is a list of forecasts")
+				forecasts = []
+				for i in range(0,40):
+					forecast = {
+						"temp": res["list"][i]["main"]["temp"],
+						"feel": res["list"][i]["main"]["feels_like"],
+						"min_temp": res["list"][i]["main"]["temp_min"],
+						"max_temp": res["list"][i]["main"]["temp_max"],
+						"pressure": res["list"][i]["main"]["pressure"],
+						"humidity": res["list"][i]["main"]["humidity"],
+						"main": res["list"][i]["weather"][0]["main"],
+						"desc": res["list"][i]["weather"][0]["description"],
+						"icon": res["list"][i]["weather"][0]["icon"]
+					}
+					forecasts.append(forecast)
+
+				data.update({"forecasts": forecasts})
+
+			if res.get("city") and res["city"] != None:
+				data.update({
+					"latitude": res["city"]["coord"]["lat"],
+					"longitude": res["city"]["coord"]["lon"],
+					"local_timezone": timezone(tf.timezone_at(lng=res["city"]["coord"]["lon"], lat=res["city"]["coord"]["lat"])),
+					"country": res["city"]["country"],
+					"sunrise": datetime.datetime.fromtimestamp(res["city"]["sunrise"], tz=timezone(tf.timezone_at(lng=res["city"]["coord"]["lon"], lat=res["city"]["coord"]["lat"]))),
+					"sunset": datetime.datetime.fromtimestamp(res["city"]["sunset"], tz=timezone(tf.timezone_at(lng=res["city"]["coord"]["lon"], lat=res["city"]["coord"]["lat"]))),
+					"timestamp": datetime.datetime.now(tz=timezone(tf.timezone_at(lng=res["city"]["coord"]["lon"], lat=res["city"]["coord"]["lat"]))).strftime("%A %B %d, %Y %I:%M:%S %p %Z"),
+					"name": res["city"]["name"]
+				})
+
+			print(data)
 
 	def prepareResponse(self, res, data):
 		if res != {}:
@@ -197,8 +237,75 @@ class Bot(dokkaebi.Dokkaebi):
 
 		return {"city": city, "state": state, "country_code": country_code}
 
+	def parsePostalCode(self, user_parameters):
+		postal_code = None
+		country_code = None
+
+		#comma-separated parameters processing
+		#country could be given along with postal code
+		if len(user_parameters) == 2: #postal code and country were given
+			postal_code = " ".join(user_parameters[:(len(user_parameters) - 1)]).strip()
+			print(postal_code)
+			country_code = user_parameters[len(user_parameters) - 1].strip()
+			print(country_code)
+			
+		else: #otherwise it was just a postal code
+			postal_code = user_parameters
+			print(postal_code)
+
+		return {"postal_code": postal_code, "country_code": country_code}
+
 	def cityDash(self, user_parameters, data):
-		print("city dash!")
+		city = user_parameters["city"]
+
+		if "state" in user_parameters:
+			state = user_parameters["state"]
+		else:
+			state = None
+
+		if "country_code" in user_parameters:
+			country_code = user_parameters["country_code"]
+		else:
+			country_code = None
+
+		if city != None:
+			#openweather provides units parameter - we use imperial in the US
+			#but the other option is metric, or don't pass in units and you'll get
+			#a temperature in kelvin. if you do that, you can use the conversion
+			#functions if/when you wish to convert (for example the user wants to see it
+			#differently and you require units as a command parameter)
+			if state != None:
+				if country_code != None:
+					#print('path 1')
+					url = "https://api.openweathermap.org/data/2.5/forecast?q=" + city.title() + "," + state + "," + country_code + "&units=imperial&appid=" + openweather["key"]
+				else:
+					if state.upper() in states:
+						url = "https://api.openweathermap.org/data/2.5/forecast?q=" + city.title() + "," + state + ",us&units=imperial&appid=" + openweather["key"]
+						#print('path 2')
+					else:
+						url = "https://api.openweathermap.org/data/2.5/forecast?q=" + city.title() + "," + state + "&units=imperial&appid=" + openweather["key"]
+						#print('path 3')
+			else:
+				url = "https://api.openweathermap.org/data/2.5/forecast?q=" + city.title() + "&units=imperial&appid=" + openweather["key"]
+				#print('path 4')
+
+			print(url)
+
+			res = requests.get(url).json()
+			#print(res)
+
+			if res != None and res.get("cod") == "200":
+				if state != None:
+					data.update({
+						"state": state,
+						"place": res.get("city").get("name").title() + ", " + state.upper() + " - " + res.get("city").get("country")
+					})
+				else:
+					data.update({"place": res.get("city").get("name").title() + " - " + res.get("city").get("country")})
+
+				self.prepareCityForecast(res, data)
+			else:
+				print("OpenWeatherMap query failed ({}): ".format(res.get("cod")) + res.get("message"))
 
 	def weatherByCity(self, user_parameters, data):
 		params = self.parseCity(user_parameters)
@@ -220,6 +327,7 @@ class Bot(dokkaebi.Dokkaebi):
 				else:
 					if state.upper() in states:
 						url = "https://api.openweathermap.org/data/2.5/weather?q=" + city.title() + "," + state + ",us&units=imperial&appid=" + openweather["key"]
+						data.update({"state": state})
 						#print('path 2')
 					else:
 						url = "https://api.openweathermap.org/data/2.5/weather?q=" + city.title() + "," + state + "&units=imperial&appid=" + openweather["key"]
@@ -231,11 +339,14 @@ class Bot(dokkaebi.Dokkaebi):
 			print(url)
 
 			res = requests.get(url).json()
-			print(res)
+			#print(res)
 
 			if res != None and res.get("cod") == 200:
 				if state != None:
-					data.update({"place": res.get("name").title() + ", " + state.upper() + " - " + res.get("sys").get("country")})
+					data.update({
+						"state": state,
+						"place": res.get("name").title() + ", " + state.upper() + " - " + res.get("sys").get("country")
+					})
 				else:
 					data.update({"place": res.get("name").title() + " - " + res.get("sys").get("country")})
 
@@ -244,20 +355,9 @@ class Bot(dokkaebi.Dokkaebi):
 				print("OpenWeatherMap query failed ({}): ".format(res.get("cod")) + res.get("message"))
 
 	def weatherByPostalCode(self, user_parameters, data):
-		postal_code = None
-		country_code = None
-
-		#comma-separated parameters processing
-		#country could be given along with postal code
-		if len(user_parameters) == 2: #postal code and country were given
-			postal_code = " ".join(user_parameters[:(len(user_parameters) - 1)]).strip()
-			print(postal_code)
-			country_code = user_parameters[len(user_parameters) - 1].strip()
-			print(country_code)
-			
-		else: #otherwise it was just a postal code
-			postal_code = user_parameters
-			print(postal_code)
+		getPost = self.parsePostalCode(user_parameters)
+		postal_code = getPost["postal_code"]
+		country_code = getPost["country_code"]
 
 		if postal_code != None:
 			#openweather provides units parameter - we use imperial in the US
@@ -273,7 +373,7 @@ class Bot(dokkaebi.Dokkaebi):
 			print(url)
 
 			res = requests.get(url).json()
-			print(res)
+			#print(res)
 
 			if res != None and res.get("cod") == 200:
 				data.update({"place": res.get("name").title() + " - " + res.get("sys").get("country")})
@@ -322,6 +422,7 @@ class Bot(dokkaebi.Dokkaebi):
 					"chat_id": chat_id, 
 					"text": "Just submit a command to get weather information.\nFor example, the command: /cityweather San Diego\nwill return weather information for San Diego.\nUse the /help command for the full list of commands."
 				}).json())
+
 			elif command in ["/help", "/help@" + self.bot_info["username"]]:
 				#append the help string from
 				#the bot_command data structure
@@ -337,29 +438,20 @@ class Bot(dokkaebi.Dokkaebi):
 				
 				#print(t.rstrip())
 				print(self.sendMessage(msg).json())
+
 			elif command in ["/dash", "/dash@" + self.bot_info["username"]]:
-				dash_data = {}
-				self.prepareData(WeatherType.CITY, user_parameters, dash_data)
+				city_data = self.parseCity(user_parameters)
+				print(city_data)
 
-				print(dash_data)
+				d = str(urllib.parse.urlencode(city_data))
+				print(d)
+				d = hook_data["url"] + "/dash?" + d
+				print(d)
 
-				import urllib.parse
-
-				if dash_data != {}:
-					d = str(urllib.parse.urlencode(dash_data))
-					print(d)
-					headers = {
-					    'Authorization': bitly["token"],
-					    'Content-Type': 'application/json',
-					}
-
-					data = { "long_url": hook_data["url"] + "/dash?" + d, "domain": "bit.ly" }
-
-					shorten = requests.post('https://api-ssl.bitly.com/v4/shorten', headers=headers, json=data).json()
-					short_url = shorten.get("link")
+				if d != None and d != "":
 					print(self.sendMessage({
 						"chat_id": chat_id, 
-						"text": "Your dashboard has been created! Check it out - " + short_url
+						"text": "Your dashboard has been created! Check it out - " + d
 					}).json())
 				else:
 					print(self.sendMessage({
@@ -393,6 +485,7 @@ class Bot(dokkaebi.Dokkaebi):
 						"chat_id": chat_id, 
 						"text": "There was an error with the city you entered. Please check the spelling and try again."
 					}).json())
+					
 			elif command in ["/zipweather", "/zipweather@" + self.bot_info["username"]]:
 				zip_data = {}
 				self.prepareData(WeatherType.POSTAL_CODE, user_parameters, zip_data)
