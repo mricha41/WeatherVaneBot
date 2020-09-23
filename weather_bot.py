@@ -67,6 +67,7 @@ bitly = {
 class WeatherType(Enum):
 	CITY = 0
 	POSTAL_CODE = 1
+	CITY_DASH = 2
 
 states = {
 	"AL", "AK", "AR", "AZ", "CA", "CO", "CT", "DE", "FL", "GA",
@@ -94,7 +95,7 @@ class Bot(dokkaebi.Dokkaebi):
 		}
 		"""
 		fig = plotly.graph_objects.Figure(
-		    data=[plotly.graph_objects.Bar(
+		    data=[plotly.graph_objects.Scatter(
 		    	x=["Low", "Current", "High"],
 		    	y=[params["min_temp"], params["temp"], params["max_temp"]]
 		    )],
@@ -114,26 +115,27 @@ class Bot(dokkaebi.Dokkaebi):
 
 		return render
 
-	def prepareData(self, type, user_parameters):
-		self.payload = {}
+	def prepareData(self, type, user_parameters, data):
 		if type == WeatherType.CITY:
-			self.weatherByCity(user_parameters)
-		if type == WeatherType.POSTAL_CODE:
-			self.weatherByPostalCode(user_parameters)
+			self.weatherByCity(user_parameters, data)
+		elif type == WeatherType.POSTAL_CODE:
+			self.weatherByPostalCode(user_parameters, data)
+		elif type == WeatherType.CITY_DASH:
+			self.cityDash(user_parameters, data)
 
-	def prepareResponse(self, res):
+	def prepareResponse(self, res, data):
 		if res != {}:
 			tf = TimezoneFinder()
-
+			
 			if res.get("coord") and res["coord"] != None:
-				self.payload.update({
+				data.update({
 					"latitude": res["coord"]["lat"],
 					"longitude": res["coord"]["lon"],
 					"local_timezone": timezone(tf.timezone_at(lng=res["coord"]["lon"], lat=res["coord"]["lat"]))
 				})
 
 			if res.get("main") and res["main"] != None:
-				self.payload.update({
+				data.update({
 					"temp": res["main"]["temp"],
 					"feel": res["main"]["feels_like"],
 					"min_temp": res["main"]["temp_min"],
@@ -143,14 +145,14 @@ class Bot(dokkaebi.Dokkaebi):
 				})
 
 			if res.get("weather") and res["weather"][0] != None:
-				self.payload.update({
+				data.update({
 					"main": res["weather"][0]["main"],
 					"desc": res["weather"][0]["description"],
 					"icon": res["weather"][0]["icon"],
 				})
 
 			if res.get("sys") and res["sys"] != None:
-				self.payload.update({
+				data.update({
 					"country": res["sys"]["country"],
 					"sunrise": datetime.datetime.fromtimestamp(res["sys"]["sunrise"], tz=timezone(tf.timezone_at(lng=res["coord"]["lon"], lat=res["coord"]["lat"]))),
 					"sunset": datetime.datetime.fromtimestamp(res["sys"]["sunset"], tz=timezone(tf.timezone_at(lng=res["coord"]["lon"], lat=res["coord"]["lat"]))),
@@ -158,9 +160,9 @@ class Bot(dokkaebi.Dokkaebi):
 				})
 
 			if res.get("name") and res["name"] != None:
-				self.payload.update({"name": res["name"]})
+				data.update({"name": res["name"]})
 
-	def weatherByCity(self, user_parameters):
+	def parseCity(self, user_parameters):
 		#check how long the city name is
 		#and act accordingly
 		state = None #user may supply the state too
@@ -193,6 +195,18 @@ class Bot(dokkaebi.Dokkaebi):
 		city = city.translate(str.maketrans('', '', string.punctuation))
 		city = city.replace("’", "")
 
+		return {"city": city, "state": state, "country_code": country_code}
+
+	def cityDash(self, user_parameters, data):
+		print("city dash!")
+
+	def weatherByCity(self, user_parameters, data):
+		params = self.parseCity(user_parameters)
+
+		city = params["city"]
+		state = params["state"]
+		country_code = params["country_code"]
+
 		if city != None:
 			#openweather provides units parameter - we use imperial in the US
 			#but the other option is metric, or don't pass in units and you'll get
@@ -221,15 +235,15 @@ class Bot(dokkaebi.Dokkaebi):
 
 			if res != None and res.get("cod") == 200:
 				if state != None:
-					self.payload.update({"place": res.get("name").title() + ", " + state.upper() + " - " + res.get("sys").get("country")})
+					data.update({"place": res.get("name").title() + ", " + state.upper() + " - " + res.get("sys").get("country")})
 				else:
-					self.payload.update({"place": res.get("name").title() + " - " + res.get("sys").get("country")})
+					data.update({"place": res.get("name").title() + " - " + res.get("sys").get("country")})
 
-				self.prepareResponse(res)
+				self.prepareResponse(res, data)
 			else:
 				print("OpenWeatherMap query failed ({}): ".format(res.get("cod")) + res.get("message"))
 
-	def weatherByPostalCode(self, user_parameters):
+	def weatherByPostalCode(self, user_parameters, data):
 		postal_code = None
 		country_code = None
 
@@ -262,8 +276,8 @@ class Bot(dokkaebi.Dokkaebi):
 			print(res)
 
 			if res != None and res.get("cod") == 200:
-				self.payload.update({"place": res.get("name").title() + " - " + res.get("sys").get("country")})
-				self.prepareResponse(res)
+				data.update({"place": res.get("name").title() + " - " + res.get("sys").get("country")})
+				self.prepareResponse(res, data)
 			else:
 				print("OpenWeatherMap query failed ({}): ".format(res.get("cod")) + res.get("message"))
 
@@ -324,14 +338,15 @@ class Bot(dokkaebi.Dokkaebi):
 				#print(t.rstrip())
 				print(self.sendMessage(msg).json())
 			elif command in ["/dash", "/dash@" + self.bot_info["username"]]:
-				self.prepareData(WeatherType.CITY, user_parameters)
+				dash_data = {}
+				self.prepareData(WeatherType.CITY, user_parameters, dash_data)
 
-				print(self.payload)
+				print(dash_data)
 
 				import urllib.parse
 
-				if self.payload != {}:
-					d = str(urllib.parse.urlencode(self.payload))
+				if dash_data != {}:
+					d = str(urllib.parse.urlencode(dash_data))
 					print(d)
 					headers = {
 					    'Authorization': bitly["token"],
@@ -353,23 +368,24 @@ class Bot(dokkaebi.Dokkaebi):
 					}).json())
 
 			elif command in ["/cityweather", "/cityweather@" + self.bot_info["username"]]:
-				self.prepareData(WeatherType.CITY, user_parameters)
+				city_data = {}
+				self.prepareData(WeatherType.CITY, user_parameters, city_data)
 
-				#print(self.payload)
+				#print(city_data)
 
-				if self.payload != {}:
+				if city_data != {}:
 					print(self.sendPhoto({
 						"chat_id": chat_id,
-						"photo": "http://openweathermap.org/img/wn/" + self.payload.get("icon") + "@4x.png", 
-						"caption": "The current weather for " + self.payload.get("place") + ":" +
+						"photo": "http://openweathermap.org/img/wn/" + city_data.get("icon") + "@4x.png", 
+						"caption": "The current weather for " + city_data.get("place") + ":" +
 								"\n--------------------------------" +
-								"\n" + self.payload.get("main") + "/" + self.payload.get("desc") + "\n<b>Temperature</b>: {}".format(self.payload.get("temp")) + " °F" +
-								"\n<i>Feels like</i>: {}".format(self.payload.get("feel")) + " °F" +
-								"\n<b>Low</b>: {}".format(self.payload.get("min_temp")) + " °F" + "\n<b>High</b>: {}".format(self.payload.get("max_temp")) + " °F" +
+								"\n" + city_data.get("main") + "/" + city_data.get("desc") + "\n<b>Temperature</b>: {}".format(city_data.get("temp")) + " °F" +
+								"\n<i>Feels like</i>: {}".format(city_data.get("feel")) + " °F" +
+								"\n<b>Low</b>: {}".format(city_data.get("min_temp")) + " °F" + "\n<b>High</b>: {}".format(city_data.get("max_temp")) + " °F" +
 								"\n--------------------------------" +
-								"\n<i>Pressure</i>: {}".format(self.payload.get("pressure")) + " hpa\n<i>Humidity</i>: {}".format(self.payload.get("humidity")) + "%" +
+								"\n<i>Pressure</i>: {}".format(city_data.get("pressure")) + " hpa\n<i>Humidity</i>: {}".format(city_data.get("humidity")) + "%" +
 								"\n--------------------------------" +
-								"\n<i>Sunrise</i>: {}".format(self.payload.get("sunrise").strftime("%A %B %d, %Y %X %Z")) + "\n<i>Sunset</i>: {}".format(self.payload.get("sunset").strftime("%A %B %d, %Y %X %Z")),
+								"\n<i>Sunrise</i>: {}".format(city_data.get("sunrise").strftime("%A %B %d, %Y %X %Z")) + "\n<i>Sunset</i>: {}".format(city_data.get("sunset").strftime("%A %B %d, %Y %X %Z")),
 						"parse_mode": "html"
 					}).json())
 				else:
@@ -378,23 +394,24 @@ class Bot(dokkaebi.Dokkaebi):
 						"text": "There was an error with the city you entered. Please check the spelling and try again."
 					}).json())
 			elif command in ["/zipweather", "/zipweather@" + self.bot_info["username"]]:
-				self.prepareData(WeatherType.POSTAL_CODE, user_parameters)
+				zip_data = {}
+				self.prepareData(WeatherType.POSTAL_CODE, user_parameters, zip_data)
 
-				#print(self.payload)
+				#print(zip_data)
 
-				if self.payload != {}:
+				if zip_data != {}:
 					print(self.sendPhoto({
 						"chat_id": chat_id,
-						"photo": "http://openweathermap.org/img/wn/" + self.payload.get("icon") + "@4x.png", 
-						"caption": "The current weather for " + self.payload.get("place") + ":" +
+						"photo": "http://openweathermap.org/img/wn/" + zip_data.get("icon") + "@4x.png", 
+						"caption": "The current weather for " + zip_data.get("place") + ":" +
 								"\n--------------------------------" +
-								"\n" + self.payload.get("main") + "/" + self.payload.get("desc") + "\n<b>Temperature</b>: {}".format(self.payload.get("temp")) + " °F" +
-								"\n<i>Feels like</i>: {}".format(self.payload.get("feel")) + " °F" +
-								"\n<b>Low</b>: {}".format(self.payload.get("min_temp")) + " °F" + "\n<b>High</b>: {}".format(self.payload.get("max_temp")) + " °F" +
+								"\n" + zip_data.get("main") + "/" + zip_data.get("desc") + "\n<b>Temperature</b>: {}".format(zip_data.get("temp")) + " °F" +
+								"\n<i>Feels like</i>: {}".format(zip_data.get("feel")) + " °F" +
+								"\n<b>Low</b>: {}".format(zip_data.get("min_temp")) + " °F" + "\n<b>High</b>: {}".format(zip_data.get("max_temp")) + " °F" +
 								"\n--------------------------------" +
-								"\n<i>Pressure</i>: {}".format(self.payload.get("pressure")) + " hpa\n<i>Humidity</i>: {}".format(self.payload.get("humidity")) + "%" +
+								"\n<i>Pressure</i>: {}".format(zip_data.get("pressure")) + " hpa\n<i>Humidity</i>: {}".format(zip_data.get("humidity")) + "%" +
 								"\n--------------------------------" +
-								"\n<i>Sunrise</i>: {}".format(self.payload.get("sunrise").strftime("%A %B %d, %Y %X %Z")) + "\n<i>Sunset</i>: {}".format(self.payload.get("sunset").strftime("%A %B %d, %Y %X %Z")),
+								"\n<i>Sunrise</i>: {}".format(zip_data.get("sunrise").strftime("%A %B %d, %Y %X %Z")) + "\n<i>Sunset</i>: {}".format(zip_data.get("sunset").strftime("%A %B %d, %Y %X %Z")),
 						"parse_mode": "html"
 					}).json())
 				else:
@@ -416,7 +433,6 @@ class Bot(dokkaebi.Dokkaebi):
 		return temp - 273.15
 		
 	def onInit(self):
-		self.payload = {}
 		print(self.setMyCommands(bot_commands).json())
 		print(self.getMyCommands().json())
 
