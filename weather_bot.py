@@ -3,6 +3,7 @@
 #if you don't whish to set this
 #just copy the file to the top-level
 #folder and run it there w/out this
+import os
 import sys
 sys.path.append("../dokkaebi")
 print(sys.path)
@@ -95,17 +96,32 @@ class Bot(dokkaebi.Dokkaebi):
 		#return "{}".format(dash_data)
 
 		dy = []
+		dx = []
+		mins = []
+		maxes = []
 		for i in range(0,40):
 			dy.append(dash_data["forecasts"][i]["temp"])
+			mins.append(dash_data["forecasts"][i]["min_temp"])
+			maxes.append(dash_data["forecasts"][i]["max_temp"])
+			dx.append(dash_data["forecasts"][i]["dt_txt"])
+
+		miny = min(mins)
+		maxy = max(maxes)
 
 		fig = plotly.graph_objects.Figure(
-		    data=[plotly.graph_objects.Scatter(
-		    	y=dy
-		    )],
-		    layout_title_text=dash_data["place"],
+		    layout_title_text=dash_data["place"]
 		)
+		fig.add_trace(plotly.graph_objects.Scatter(x=dx, y=dy, name='Temperature', fill='tozeroy', line=dict(color='#990000', width=4)))
+		#fig.add_trace(plotly.graph_objects.Scatter(x=dx, y=maxes, name='High', line=dict(color='firebrick', width=16)))
+		#fig.add_trace(plotly.graph_objects.Scatter(x=dx, y=mins, name='Low', line=dict(color='royalblue', width=4)))
 
-		fig.update_layout(yaxis=dict(range=[-30, 130]))
+		#fig.update_layout(yaxis=dict(range=[miny, maxy]))
+		#fig.update_layout(xaxis_range=[dx[0], dx[len(dx)-1]])
+		fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+		fig.update_yaxes(nticks=5)
+		fig.update_xaxes(nticks=5)
+		fig.update_xaxes(showgrid=False)
+		fig.update_yaxes(showgrid=False)
 		
 		p = plotly.offline.plot(fig, include_plotlyjs=False, output_type='div')
 
@@ -119,7 +135,10 @@ class Bot(dokkaebi.Dokkaebi):
 
 		render = """
 			<html>
-          		<head><script src="https://cdn.plot.ly/plotly-latest.min.js"></script></head>
+          		<head>
+          			<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+          			<link href="/static/css/styles.css" rel="stylesheet">
+          		</head>
           			<body>
           				""" + share_button + p + """
           			</body>
@@ -152,7 +171,10 @@ class Bot(dokkaebi.Dokkaebi):
 						"humidity": res["list"][i]["main"]["humidity"],
 						"main": res["list"][i]["weather"][0]["main"],
 						"desc": res["list"][i]["weather"][0]["description"],
-						"icon": res["list"][i]["weather"][0]["icon"]
+						"icon": res["list"][i]["weather"][0]["icon"],
+						"dt": res["list"][i]["dt"],
+						"date_text": datetime.datetime.fromtimestamp(res["list"][i]["dt"], tz=timezone(tf.timezone_at(lng=res["city"]["coord"]["lon"], lat=res["city"]["coord"]["lat"]))).strftime("%Y-%m-%d"),
+						"dt_txt": res["list"][i]["dt_txt"]
 					}
 					forecasts.append(forecast)
 
@@ -472,12 +494,17 @@ class Bot(dokkaebi.Dokkaebi):
 				self.prepareData(WeatherType.CITY, user_parameters, city_data)
 
 				#print(city_data)
-
+				#timezones and UTC offsets are tricky...
+				#but this is close enough for the intended purpose
+				#see this for more info:
+				#https://stackoverflow.com/questions/17733139/getting-the-correct-timezone-offset-in-python-using-local-timezone
+				#and this:
+				#https://en.wikipedia.org/wiki/ISO_8601
 				if city_data != {}:
 					print(self.sendPhoto({
 						"chat_id": chat_id,
 						"photo": "http://openweathermap.org/img/wn/" + city_data.get("icon") + "@4x.png", 
-						"caption": "The current weather for " + city_data.get("place") + ":" +
+						"caption": "The current weather for " + city_data.get("place") + " (" + city_data.get("timestamp") + ") :" +
 								"\n--------------------------------" +
 								"\n" + city_data.get("main") + "/" + city_data.get("desc") + "\n<b>Temperature</b>: {}".format(city_data.get("temp")) + " °F" +
 								"\n<i>Feels like</i>: {}".format(city_data.get("feel")) + " °F" +
@@ -537,4 +564,15 @@ class Bot(dokkaebi.Dokkaebi):
 		print(self.setMyCommands(bot_commands).json())
 		print(self.getMyCommands().json())
 
-newBot = Bot(hook_data)
+conf = {
+	'/': {
+		'tools.sessions.on': True,
+		'tools.staticdir.root': os.path.abspath(os.getcwd())
+	},
+	'/static': {
+		'tools.staticdir.on': True,
+		'tools.staticdir.dir': './public'
+	}
+}
+
+newBot = Bot(hook_data, conf)

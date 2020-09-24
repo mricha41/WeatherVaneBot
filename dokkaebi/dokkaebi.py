@@ -14,7 +14,7 @@ class Dokkaebi(object):
 	self.update_received_count - number of updates received counted since the bot was instantiated.
 	"""
 
-	def __init__(self, hook):
+	def __init__(self, hook, conf = None):
 		"""
 		Dokkaebi bot construction requires passing in a dictionary of the following form, for example:
 		hook = {
@@ -60,7 +60,10 @@ class Dokkaebi(object):
 			    'server.socket_host': self.webhook_config["hostname"],
 			    'server.socket_port': self.webhook_config["port"],
 			})
-			cherrypy.quickstart(self, '/')
+			if conf != None:
+				cherrypy.quickstart(self, '/', conf)
+			else:
+				cherrypy.quickstart(self, '/')
 		else:
 			print("Dokkaebi bot initializing without CherryPy...")
 
