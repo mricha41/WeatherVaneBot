@@ -102,17 +102,26 @@ class Bot(dokkaebi.Dokkaebi):
 		    data=[plotly.graph_objects.Scatter(
 		    	y=dy
 		    )],
-		    layout_title_text=params["city"],
+		    layout_title_text=dash_data["place"],
 		)
 
 		fig.update_layout(yaxis=dict(range=[-30, 130]))
 		
 		p = plotly.offline.plot(fig, include_plotlyjs=False, output_type='div')
 
+		share_url = hook_data["url"] + "/dash?" + urllib.parse.urlencode(params)
+		print(share_url)
+		share_comment = "Forecast dashboard: " + dash_data["place"]
+		print(share_comment)
+		share_button = ("<div><script async src=\"https://telegram.org/js/telegram-widget.js?11\" data-telegram-share-url=\"" 
+						+ share_url + "\" data-comment=\"" + share_comment + "\" data-size=\"large\"></script></div>")
+		print(share_button)
+
 		render = """
 			<html>
           		<head><script src="https://cdn.plot.ly/plotly-latest.min.js"></script></head>
-          			<body>""" + p + """
+          			<body>
+          				""" + share_button + p + """
           			</body>
           	</html>"""
 
@@ -161,7 +170,7 @@ class Bot(dokkaebi.Dokkaebi):
 					"name": res["city"]["name"]
 				})
 
-			print(data)
+			#print(data)
 
 	def prepareResponse(self, res, data):
 		if res != {}:
@@ -274,8 +283,8 @@ class Bot(dokkaebi.Dokkaebi):
 			#a temperature in kelvin. if you do that, you can use the conversion
 			#functions if/when you wish to convert (for example the user wants to see it
 			#differently and you require units as a command parameter)
-			if state != None:
-				if country_code != None:
+			if state != None and state != "None":
+				if country_code != None and country_code != "None":
 					#print('path 1')
 					url = "https://api.openweathermap.org/data/2.5/forecast?q=" + city.title() + "," + state + "," + country_code + "&units=imperial&appid=" + openweather["key"]
 				else:
@@ -295,7 +304,7 @@ class Bot(dokkaebi.Dokkaebi):
 			#print(res)
 
 			if res != None and res.get("cod") == "200":
-				if state != None:
+				if state != None and state != "None":
 					data.update({
 						"state": state,
 						"place": res.get("city").get("name").title() + ", " + state.upper() + " - " + res.get("city").get("country")
@@ -441,11 +450,10 @@ class Bot(dokkaebi.Dokkaebi):
 
 			elif command in ["/dash", "/dash@" + self.bot_info["username"]]:
 				city_data = self.parseCity(user_parameters)
+				#city_data["city"] = city_data["city"].replace(" ", "%20")
 				print(city_data)
 
-				d = str(urllib.parse.urlencode(city_data))
-				print(d)
-				d = hook_data["url"] + "/dash?" + d
+				d = hook_data["url"] + "/dash?" + str(urllib.parse.urlencode(city_data))
 				print(d)
 
 				if d != None and d != "":
@@ -485,7 +493,7 @@ class Bot(dokkaebi.Dokkaebi):
 						"chat_id": chat_id, 
 						"text": "There was an error with the city you entered. Please check the spelling and try again."
 					}).json())
-					
+
 			elif command in ["/zipweather", "/zipweather@" + self.bot_info["username"]]:
 				zip_data = {}
 				self.prepareData(WeatherType.POSTAL_CODE, user_parameters, zip_data)
