@@ -15,6 +15,10 @@ import datetime
 from timezonefinder import TimezoneFinder
 from pytz import timezone
 import urllib.parse
+import dominate
+from dominate.tags import *
+from dominate.util import raw
+from dominate.util import text
 
 import requests
 import json
@@ -117,34 +121,86 @@ class Bot(dokkaebi.Dokkaebi):
 
 		#fig.update_layout(yaxis=dict(range=[miny, maxy]))
 		#fig.update_layout(xaxis_range=[dx[0], dx[len(dx)-1]])
-		fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+		fig.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
 		fig.update_yaxes(nticks=5)
 		fig.update_xaxes(nticks=5)
 		fig.update_xaxes(showgrid=False)
 		fig.update_yaxes(showgrid=False)
 		
-		p = plotly.offline.plot(fig, include_plotlyjs=False, output_type='div')
+		line_chart = plotly.io.to_html(fig, include_plotlyjs=False, full_html=False)
+
+		#print(line_chart)
+
+		'''dt2 = """
+			<table id="table_id" class="display">
+    <thead>
+        <tr>
+            <th>Column 1</th>
+            <th>Column 2</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Row 1 Data 1</td>
+            <td>Row 1 Data 2</td>
+        </tr>
+        <tr>
+            <td>Row 2 Data 1</td>
+            <td>Row 2 Data 2</td>
+        </tr>
+    </tbody>
+</table>
+		"""'''
+
+		#set up the doc
+		doc = dominate.document(title="Weather Dashboard")
+
+		with doc.head:
+			link(rel='stylesheet', href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css", integrity="sha384-JcKb8q3iqJ61gNV9KGb8thSsNjpSL0n8PARn9HuZOnIxN0hoP+VmmDGMN5t9UJ0Z", crossorigin="anonymous")
+			link(rel='stylesheet', type="text/css", href="https://cdn.datatables.net/v/bs4/dt-1.10.22/datatables.min.css")
+			link(rel='stylesheet', href="/static/css/styles.css")
+			script(type='text/javascript', src="https://cdn.plot.ly/plotly-latest.min.js")
+			script(type='text/javascript', src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.0/anime.min.js")
+			script(type='text/javascript', src="https://code.jquery.com/jquery-3.5.1.slim.min.js", integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj", crossorigin="anonymous")
+			script(type='text/javascript', src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js", integrity="sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN", crossorigin="anonymous")
+			script(type='text/javascript', src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js", integrity="sha384-B4gt1jrGC7Jh4AgTPSdUtOBvfO8shuf57BaghqFfPlYxofvL8/KUEfYiJOMMV+rV", crossorigin="anonymous")
+			script(type='text/javascript', src="https://cdn.datatables.net/v/bs4/dt-1.10.22/datatables.min.js")
 
 		share_url = hook_data["url"] + "/dash?" + urllib.parse.urlencode(params)
 		print(share_url)
 		share_comment = "Forecast dashboard: " + dash_data["place"]
 		print(share_comment)
-		share_button = ("<div><script async src=\"https://telegram.org/js/telegram-widget.js?11\" data-telegram-share-url=\"" 
-						+ share_url + "\" data-comment=\"" + share_comment + "\" data-size=\"large\"></script></div>")
-		print(share_button)
-
-		render = """
-			<html>
-          		<head>
-          			<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-          			<link href="/static/css/styles.css" rel="stylesheet">
-          		</head>
-          			<body>
-          				""" + share_button + p + """
-          			</body>
-          	</html>"""
-
-		return render
+		with doc:
+			div((script(src="https://telegram.org/js/telegram-widget.js?11", data_telegram_share_url=share_url, data_comment=share_comment, data_size="large")))
+			wrap = div(cls="wrapper")
+			with wrap:
+				with div(id="one"):
+					div(raw(line_chart), "line-chart")
+				with div(id="two"):
+					dt = table(id="table_id", cls="display")
+					with dt:
+						with thead():
+							with tr():
+								th("Temp")
+								th("Low")
+								th("High")
+								th("Date")
+						with tbody():
+							for i in range(0,40):
+								#if i%8 == 0:
+								with tr():
+									td(dash_data["forecasts"][i]["temp"])
+									td(dash_data["forecasts"][i]["min_temp"])
+									td(dash_data["forecasts"][i]["max_temp"])
+									td(dash_data["forecasts"][i]["dt_txt"])
+				div(id="four").add(p("Four"))
+				div(id="five").add(p("Five"))
+				div(id="six").add(p("Six"))
+			
+			script().add("$(document).ready( function () { $('#table_id').DataTable();} );")
+			script(type='text/javascript', src="/static/js/animations.js")
+		
+		return doc.render()
 
 	def prepareData(self, type, user_parameters, data):
 		if type == WeatherType.CITY:
