@@ -1,9 +1,12 @@
 body {
-	background-color: #fff;
+	background-color: #0f0f0f;
+	color: #fff;
 }
 
-.wrapper {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-gap: 10px;
+#content {
+	
+}
+
+.current-date {
+	color: #ff9900;
 }
