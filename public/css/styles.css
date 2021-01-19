@@ -7,6 +7,20 @@ body {
 	
 }
 
+.row {
+	margin-bottom: 10px;
+}
+
 .current-date {
 	color: #ff9900;
+}
+
+blockquote {
+	background-color: #0f0f0f;
+	border-left: thin solid #990000;
+	padding-left: 10px;
+}
+
+#map {
+	height: 400px;
 }

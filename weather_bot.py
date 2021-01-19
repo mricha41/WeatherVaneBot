@@ -5,7 +5,8 @@
 #folder and run it there w/out this
 import os
 import sys
-sys.path.append("../dokkaebi")
+sys.path.append(".")
+sys.path.append("dokkaebi")
 print(sys.path)
 
 from enum import Enum
@@ -57,6 +58,7 @@ bot_commands = {
 	"commands": [
 		{'command': 'start', 'description': 'starts the bot.', 'example': "Just issue /start in the Telegram message box."},
 		{'command': 'cityweather', 'description': 'Get the current weather information of any city in the world available through OpenWeatherMap.org.', 'example': "\nThe command: /cityweather San Diego will return weather information for San Diego.\nSpecifying the command with city, state, and/or country as\n/cityweather San Diego, Ca, US\nwill also work as will\n/cityweather Paris, Fr\nTry copying and pasting one of these commands to get a feel for it. Enjoy the weather! &#128516;"},
+		{'command': 'zipweather', 'description': 'Get the current weather information of any zip code in the USA and many postal codes throughout the world available through OpenWeatherMap.org.', 'example': "\nThe command: /zipweather 92113 will return weather information for the San Diego 92113 zip code.\n/zipweather WC2N 5DU, GB will return weather information from London, GB.\nTry copying and pasting one of these commands to get a feel for it. Enjoy the weather! &#128516;"},
 		{'command': 'dash', 'description': 'Get the current weather information and forecast of any city in the world available through OpenWeatherMap.org as a nice dashboard.', 'example': "\nThe command: /dash San Diego will return a link to a weather dashboard for San Diego.\nSpecifying the command with city, state, and/or country as\n/dash San Diego, Ca, US\nwill also work as will\n/dash Paris, Fr\nTry copying and pasting one of these commands to try it out."}
 	]
 }
@@ -65,6 +67,13 @@ bot_commands = {
 #at api.openweathermap.org
 openweather = {
 	'key': config["OpenWeather"]["API_KEY"]
+}
+
+#you'll also need a mapbox account
+#for generating a map with the coordinates
+#from openweathermap
+mapbox = {
+	'key': config["Mapbox"]["API_KEY"]
 }
 
 #bitly access
@@ -98,23 +107,51 @@ class Bot(dokkaebi.Dokkaebi):
 				if "state" in params:
 					self.cityDash({"city": params["city"], "state": params["state"], "country_code": params["country_code"]}, dash_data)
 					c = self.parseCommandAndParams("/cityweather " + params["city"] + "," + params["state"] + "," + params["country_code"])
-					print("city parsed: {}".format(c))
+					#print("city parsed: {}".format(c))
 					self.prepareData(WeatherType.CITY, c["user_parameters"], current)
 				else:
 					self.cityDash({"city": params["city"], "country_code": params["country_code"]}, dash_data)
 					c = self.parseCommandAndParams("/cityweather " + params["city"] + "," + params["country_code"])
-					print("city parsed: {}".format(c))
+					#print("city parsed: {}".format(c))
 					self.prepareData(WeatherType.CITY, c["user_parameters"], current)
 			else:
 				self.cityDash({"city": params["city"]}, dash_data)
 				c = self.parseCommandAndParams("/cityweather " + params["city"])
-				print("city parsed: {}".format(c))
+				#print("city parsed: {}".format(c))
 				self.prepareData(WeatherType.CITY, c["user_parameters"], current)
 		else:
 			return "Bad parameters - need a city name for a forecast dashboard at a minimum."
-		#return "{}".format(dash_data)
+		
 		#print(dash_data)
 		#print(current)
+
+		#set up the doc
+		doc = dominate.document(title="Weather Dashboard")
+
+		with doc.head:
+			script(type='text/javascript', src="https://cdn.plot.ly/plotly-latest.min.js")
+			script(type='text/javascript', src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.0/anime.min.js")
+			script(type='text/javascript', src="https://code.jquery.com/jquery-3.5.1.min.js")
+			script(type='text/javascript', src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js", integrity="sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN", crossorigin="anonymous")
+			script(type='text/javascript', src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js", integrity="sha384-B4gt1jrGC7Jh4AgTPSdUtOBvfO8shuf57BaghqFfPlYxofvL8/KUEfYiJOMMV+rV", crossorigin="anonymous")
+			script(type='text/javascript', src="https://cdn.datatables.net/v/bs4/dt-1.10.22/datatables.min.js")
+			script(type='text/javascript', src="https://api.mapbox.com/mapbox-gl-js/v2.0.0/mapbox-gl.js")
+			link(rel='stylesheet', href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css", integrity="sha384-JcKb8q3iqJ61gNV9KGb8thSsNjpSL0n8PARn9HuZOnIxN0hoP+VmmDGMN5t9UJ0Z", crossorigin="anonymous")
+			link(rel='stylesheet', href="https://cdn.datatables.net/v/bs4/dt-1.10.22/datatables.min.css")
+			link(rel='stylesheet', href="/static/css/styles.css")
+			link(rel='stylesheet', href="https://api.mapbox.com/mapbox-gl-js/v2.0.0/mapbox-gl.css")
+			link(rel='stylesheet', href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css")
+			script(type='text/javascript', src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js")
+
+		#handle display under error conditions...
+		if dash_data == None or dash_data == {}:
+			with doc:
+				wrap = div(id="content", cls="container-fluid")
+				with wrap:
+					div(raw("Unable to create a dashboard from the parameters given!<button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\"><span aria-hidden=\"true\">&times;</span></button>"), cls="msg alert alert-danger alert-dismissible fade show", role="alert")
+					div(h1("Please take a closer look at your command and try again :("))
+					
+			return doc.render()
 
 		dy = []
 		dates = []
@@ -155,28 +192,14 @@ class Bot(dokkaebi.Dokkaebi):
 		
 		line_chart = plotly.io.to_html(fig, include_plotlyjs=False, full_html=False)
 
-		#set up the doc
-		doc = dominate.document(title="Weather Dashboard")
-
-		with doc.head:
-			script(type='text/javascript', src="https://cdn.plot.ly/plotly-latest.min.js")
-			script(type='text/javascript', src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.0/anime.min.js")
-			script(type='text/javascript', src="https://code.jquery.com/jquery-3.5.1.min.js")
-			script(type='text/javascript', src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js", integrity="sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN", crossorigin="anonymous")
-			script(type='text/javascript', src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js", integrity="sha384-B4gt1jrGC7Jh4AgTPSdUtOBvfO8shuf57BaghqFfPlYxofvL8/KUEfYiJOMMV+rV", crossorigin="anonymous")
-			script(type='text/javascript', src="https://cdn.datatables.net/v/bs4/dt-1.10.22/datatables.min.js")
-			link(rel='stylesheet', href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css", integrity="sha384-JcKb8q3iqJ61gNV9KGb8thSsNjpSL0n8PARn9HuZOnIxN0hoP+VmmDGMN5t9UJ0Z", crossorigin="anonymous")
-			link(rel='stylesheet', href="https://cdn.datatables.net/v/bs4/dt-1.10.22/datatables.min.css")
-			link(rel='stylesheet', href="/static/css/styles.css")
-
 		share_url = hook_data["url"] + "/dash?" + urllib.parse.urlencode(params)
-		print(share_url)
+		#print(share_url)
 		share_comment = "Forecast dashboard: " + dash_data["place"]
-		print(share_comment)
+		#print(share_comment)
 		with doc:
 			wrap = div(id="content", cls="container-fluid")
 			with wrap:
-				div(raw("{} - Dashboard created successfully!<button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\"><span aria-hidden=\"true\">&times;</span></button>".format(dash_data["place"])), cls="alert alert-info alert-dismissible fade show", role="alert")
+				div(raw("{} - Dashboard created successfully!<button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\"><span aria-hidden=\"true\">&times;</span></button>".format(dash_data["place"])), cls="msg alert alert-info alert-dismissible fade show", role="alert")
 				div(
 					script(
 						src="https://telegram.org/js/telegram-widget.js?11", 
@@ -187,12 +210,20 @@ class Bot(dokkaebi.Dokkaebi):
 					cls="row justify-content-center",
 					style="margin: 10px; width: 100%;"
 				)
-				div(
-					p(dash_data["timestamp"].strftime("%I:%M%p %Z %b. %d"), cls="current-date"),
-					h1(dash_data["place"]),
-					h2(raw("{}°F".format(current["temp"]) + "&nbsp;<img src=\"" + "http://openweathermap.org/img/wn/" + current["icon"] + "@2x.png\"" + ">")),
-					p("Feels like {}°F. ".format(current["feel"]) + current["main"] + ". " + current["desc"])
-				)
+				with div(cls="row justify-content-center"):
+					with div(cls="col-6"):
+						div(
+						p(dash_data["timestamp"].strftime("%I:%M%p %Z %b. %d"), cls="current-date"),
+						h1(dash_data["place"]),
+						h2(raw("{}°F".format(current["temp"]) + "&nbsp;<img src=\"" + "https://openweathermap.org/img/wn/" + current["icon"] + "@2x.png\"" + ">")),
+						p("Feels like {}°F. ".format(current["feel"]) + current["main"] + ". " + current["desc"]),
+						blockquote(
+							p("Air pressure - {}hPa".format(current["pressure"])),
+							p("Humidity - {}%".format(current["humidity"]))
+						)
+					)
+					with div(cls="col-6"):
+						div(id="map")
 				with div(cls="row justify-content-center"):
 					with div(cls="col-6"):
 						div(raw(line_chart), id="line-chart")
@@ -207,11 +238,23 @@ class Bot(dokkaebi.Dokkaebi):
 										with tr():
 											td(date)
 											td("{}".format(dash_data["forecasts"][i]["max_temp"]) + "°F / " + "{}".format(dash_data["forecasts"][i]["min_temp"]) + "°F")
-											td(raw(dash_data["forecasts"][i]["main"] + "/" + dash_data["forecasts"][i]["description"] + "&nbsp;<img src=\"" + "http://openweathermap.org/img/wn/" + dash_data["forecasts"][i]["icon"] + ".png\"" + ">"))
+											td(raw(dash_data["forecasts"][i]["main"] + "/" + dash_data["forecasts"][i]["description"] + "&nbsp;<img src=\"" + "https://openweathermap.org/img/wn/" + dash_data["forecasts"][i]["icon"] + ".png\"" + ">"))
 			
 			script().add("$(document).ready(function() { $('#forecast').DataTable();} );")
-			#script(type='text/javascript', src="/static/js/animations.js")
-		
+			script().add("var mymap = L.map('map').setView([{},".format(dash_data["latitude"]) + "{}".format(dash_data["longitude"]) + "], 13);"
+				+ "var marker = L.marker([{},".format(dash_data["latitude"]) + "{}".format(dash_data["longitude"]) + "]).addTo(mymap);"
+			)
+			script().add("var link = new DOMParser().parseFromString('Map data © <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors, Imagery © <a href=\"https://www.mapbox.com/\">Mapbox</a>', 'text/html').documentElement.textContent;"
+				+ "L.tileLayer('https://api.mapbox.com/styles/v1/{{id}}/tiles/{{z}}/{{x}}/{{y}}?access_token={}'".format(mapbox["key"])
+				+ ", { maxZoom: 18, "
+				+ "attribution: link, "
+				+ "id: 'mapbox/streets-v11', "
+				+ "tileSize: 512, "
+				+ "zoomOffset: -1, "
+				+ "accessToken: '" + mapbox["key"] +"'"
+				+ "}).addTo(mymap);")
+			script().add("$('.msg').fadeTo(2000, 500).slideUp(500, function(){ $('.msg').slideUp(500);});")
+
 		return doc.render()
 
 	def prepareData(self, type, user_parameters, data):
@@ -227,7 +270,7 @@ class Bot(dokkaebi.Dokkaebi):
 			tf = TimezoneFinder()
 			#print(res)
 			if res.get("list") and res["list"] != None:
-				print("there is a list of forecasts")
+				#print("there is a list of forecasts")
 				forecasts = []
 				for i in range(0,40):
 					forecast = {
@@ -345,13 +388,13 @@ class Bot(dokkaebi.Dokkaebi):
 		#country could be given along with postal code
 		if len(user_parameters) == 2: #postal code and country were given
 			postal_code = " ".join(user_parameters[:(len(user_parameters) - 1)]).strip()
-			print(postal_code)
+			#print(postal_code)
 			country_code = user_parameters[len(user_parameters) - 1].strip()
-			print(country_code)
+			#print(country_code)
 			
 		else: #otherwise it was just a postal code
 			postal_code = user_parameters
-			print(postal_code)
+			#print(postal_code)
 
 		return {"postal_code": postal_code, "country_code": country_code}
 
@@ -389,7 +432,7 @@ class Bot(dokkaebi.Dokkaebi):
 				url = "https://api.openweathermap.org/data/2.5/forecast?q=" + city.title() + "&units=imperial&appid=" + openweather["key"]
 				#print('path 4')
 
-			print(url)
+			#print(url)
 
 			res = requests.get(url).json()
 			#print(res)
@@ -436,7 +479,7 @@ class Bot(dokkaebi.Dokkaebi):
 				url = "https://api.openweathermap.org/data/2.5/weather?q=" + city.title() + "&units=imperial&appid=" + openweather["key"]
 				#print('path 4')
 
-			print(url)
+			#print(url)
 
 			res = requests.get(url).json()
 			#print(res)
@@ -470,7 +513,7 @@ class Bot(dokkaebi.Dokkaebi):
 			else: #assume it's a zip in the US
 				url = "https://api.openweathermap.org/data/2.5/weather?zip=" + postal_code + ",us&units=imperial&appid=" + openweather["key"]
 
-			print(url)
+			#print(url)
 
 			res = requests.get(url).json()
 			#print(res)
@@ -492,17 +535,17 @@ class Bot(dokkaebi.Dokkaebi):
 				#re-establish the city name if multi-word (for example ["san", "luis", "obispo", "ca", "us"] 
 				#becomes reconstituted as ["san luis obispo", "ca", "us"] as you would want it to be)
 				p[0] = " ".join(p[0].split(' ')[1:])
-				print("user params: {}".format(p))
+				#print("user params: {}".format(p))
 				#print(p)
 			else: #no commas so its just the city
 				p = " ".join(user_parameters.split(' ')[1:]) #again, could be a multi-word city...
-				print("user params: {}".format(p))
+				#print("user params: {}".format(p))
 				#print(p[0])
 
 		return {"command": command, "user_parameters": p}
 
 	def handleData(self, data):
-		print(data)
+		#print(data)
 
 		if "message" in data:
 			if "text" in data["message"]:
@@ -548,10 +591,10 @@ class Bot(dokkaebi.Dokkaebi):
 
 		elif command in ["/dash", "/dash@" + self.bot_info["username"]]:
 			city_data = self.parseCity(user_parameters)
-			print(city_data)
+			#print(city_data)
 
 			d = hook_data["url"] + "/dash?" + str(urllib.parse.urlencode(city_data))
-			print(d)
+			#print(d)
 
 			if d != None and d != "":
 				print(self.sendMessage({
@@ -622,12 +665,17 @@ class Bot(dokkaebi.Dokkaebi):
 					"chat_id": chat_id, 
 					"text": "There was an error with the postal code you entered. Please check the spelling and try again."
 				}).json())
-		else:
-			msg = {
-				"chat_id": chat_id,
-				"text": "I didn't quite get that, " + user_first_name + ". Please try a valid command."
-			}
-			print(self.sendMessage(msg).json())
+		#handling malformed/unsupported commands from
+		#users this way results in weird behavior sometimes
+		#(for example on a pin message event or upon inviting the bot to a chat)
+		#it's best to just ignore interactions outside
+		#the scope of valid commands for now
+		#else:
+		#	msg = {
+		#		"chat_id": chat_id,
+		#		"text": "I didn't quite get that, " + user_first_name + ". Please try a valid command."
+		#	}
+		#	print(self.sendMessage(msg).json())
 
 	def kelvinToFahrenheit(self, temp):
 		return (temp - 273.15) * 1.8000 + 32.00
