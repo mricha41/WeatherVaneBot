@@ -5,9 +5,12 @@
 #folder and run it there w/out this
 import os
 import sys
+sys.path.append("/app/.heroku/python/lib/python3.7/site-packages")
 sys.path.append(".")
+sys.path.append("/app/dokkaebi")
 sys.path.append("dokkaebi")
 print(sys.path)
+print(os.environ.get('PORT', 5000))
 
 from enum import Enum
 
@@ -41,7 +44,7 @@ config.read('weather_bot.ini')
 #seems to result in strings for every item read.
 hook_data = {
 	'hostname': config["Telegram"]["HOSTNAME"], 
-	'port': int(config["Telegram"]["PORT"]), 
+	'port': int(os.environ.get("PORT")), 
 	'token': config["Telegram"]["BOT_TOKEN"], 
 	'url': config["Telegram"]["WEBHOOK_URL"],
 	'environment': config["Telegram"]["ENVIRONMENT"]
@@ -237,7 +240,7 @@ class Bot(dokkaebi.Dokkaebi):
 									if i == 0 or i%8 == 0:
 										with tr():
 											td(date)
-											td("{}".format(dash_data["forecasts"][i]["max_temp"]) + "°F / " + "{}".format(dash_data["forecasts"][i]["min_temp"]) + "°F")
+											td("{}".format(dash_data["forecasts"][i]["temp"]) + "°F")
 											td(raw(dash_data["forecasts"][i]["main"] + "/" + dash_data["forecasts"][i]["description"] + "&nbsp;<img src=\"" + "https://openweathermap.org/img/wn/" + dash_data["forecasts"][i]["icon"] + ".png\"" + ">"))
 			
 			script().add("$(document).ready(function() { $('#forecast').DataTable();} );")
