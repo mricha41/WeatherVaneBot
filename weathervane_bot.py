@@ -160,7 +160,7 @@ class Bot(dokkaebi.Dokkaebi):
 		dates = []
 		mins = []
 		maxes = []
-		for i in range(0,40):
+		for i in range(0, len(dash_data["forecasts"])):
 			dy.append(dash_data["forecasts"][i]["temp"])
 			mins.append(dash_data["forecasts"][i]["min_temp"])
 			maxes.append(dash_data["forecasts"][i]["max_temp"])
@@ -235,7 +235,7 @@ class Bot(dokkaebi.Dokkaebi):
 						dt = table(id="forecast", cls="table table-dark table-borderless table-hover")
 						with dt:
 							with tbody():
-								for i in range(0,40):
+								for i in range(0, len(dash_data["forecasts"])):
 									date = dash_data["forecasts"][i]["date_time"].strftime("%a. %b %d, %Y")
 									if i == 0 or i%8 == 0:
 										with tr():
@@ -275,7 +275,7 @@ class Bot(dokkaebi.Dokkaebi):
 			if res.get("list") and res["list"] != None:
 				#print("there is a list of forecasts")
 				forecasts = []
-				for i in range(0,40):
+				for i in range(0, len(res["list"])):
 					forecast = {
 						"temp": res["list"][i]["main"]["temp"],
 						"feels_like": res["list"][i]["main"]["feels_like"],
