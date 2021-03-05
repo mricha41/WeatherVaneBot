@@ -44,7 +44,8 @@ config.read('weather_bot.ini')
 #seems to result in strings for every item read.
 hook_data = {
 	'hostname': config["Telegram"]["HOSTNAME"], 
-	'port': int(os.environ.get("PORT")), 
+	#'port': int(os.environ.get("PORT")), 
+	'port': int(config["Telegram"]["PORT"]),
 	'token': config["Telegram"]["BOT_TOKEN"], 
 	'url': config["Telegram"]["WEBHOOK_URL"],
 	'environment': config["Telegram"]["ENVIRONMENT"]
@@ -237,7 +238,7 @@ class Bot(dokkaebi.Dokkaebi):
 							with tbody():
 								for i in range(0, len(dash_data["forecasts"])):
 									date = dash_data["forecasts"][i]["date_time"].strftime("%a. %b %d, %Y")
-									if i == 0 or i%8 == 0:
+									if i == 0 or i%4 == 0:
 										with tr():
 											td(date)
 											td("{}".format(dash_data["forecasts"][i]["temp"]) + "°F")
