@@ -238,7 +238,7 @@ class Bot(dokkaebi.Dokkaebi):
 							with tbody():
 								for i in range(0, len(dash_data["forecasts"])):
 									date = dash_data["forecasts"][i]["date_time"].strftime("%a. %b %d, %Y")
-									if i == 0 or i%4 == 0:
+									if i == 0 or i%8 == 0:
 										with tr():
 											td(date)
 											td("{}".format(dash_data["forecasts"][i]["temp"]) + "°F")
